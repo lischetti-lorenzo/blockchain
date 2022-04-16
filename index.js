@@ -1,6 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const request = require('request');
+const path = require('path');
 const Blockchain = require('./src/blockchain/blockchain');
 const PubSub = require('./src/app/pubsub');
 const TransactionPool = require('./src/wallet/transaction-pool');
@@ -19,6 +20,7 @@ const ROOT_NODE_ADDRESS = `http://localhost:${DEFAULT_PORT}`;
 let PEER_PORT;
 
 app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, 'src', 'client', 'dist')));
 
 app.get('/api/blocks', (req, res) => {
   res.json(blockchain.chain);
@@ -40,6 +42,10 @@ app.get('/api/wallet-info', (req, res) => {
     address,
     balance: Wallet.calculateBalance({ chain: blockchain.chain, address })
   });
+});
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, './src/client/dist/index.html'));
 });
 
 app.post('/api/mine', (req, res) => {
@@ -100,6 +106,34 @@ const syncRootState = () => {
     }
   })
 };
+
+const firstWallet = new Wallet();
+const secondWallet = new Wallet();
+
+const generateWalletTransaction = (wallet, recipient, amount) => {  
+  const transaction = wallet.createTransaction({ amount, recipient, chain: blockchain.chain });
+  
+  transactionPool.setTransaction(transaction);
+}
+
+const walletAction = () => generateWalletTransaction(wallet, firstWallet.publicKey, 5);
+const firstWalletAction = () => generateWalletTransaction(firstWallet, secondWallet.publicKey, 10);
+const secondWalletAction = () => generateWalletTransaction(secondWallet, wallet.publicKey, 15);
+
+for (let i = 0; i < 10; i++) {
+  if (i%3 === 0) {
+    walletAction();
+    firstWalletAction();
+  } else if (i%3 === 1) {
+    walletAction();
+    secondWalletAction();
+  } else {
+    firstWalletAction();
+    secondWalletAction();
+  }
+
+  transactionMiner.mineTransactions();
+}
 
 if(process.env.GENERATE_PEER_PORT === 'true') {
   PEER_PORT = DEFAULT_PORT + Math.ceil(Math.random() * 1000);
